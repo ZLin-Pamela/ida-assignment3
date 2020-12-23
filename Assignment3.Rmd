@@ -1,0 +1,337 @@
+---
+title: "Assignment3"
+author: "Zijun Lin"
+date: "2020/12/22"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+1.
+
+```{r, include = TRUE, message = FALSE}
+require(mice)
+```
+
+```{r, include = TRUE, message = FALSE}
+#the total number of the data in nhanes
+n <- nrow(nhanes)
+#the number of incomplete cases
+n_mis <- n-nrow(cc(nhanes))
+#checking the percentage of incomplete cases
+n_mis/n
+```
+
+The percentage of the incomplete cases is 48%.
+Then we impute the data with \texttt{mice}. 
+
+```{r, include = TRUE, message = FALSE}
+imps <- mice(nhanes, seed = 1, printFlag = FALSE)
+imps
+```
+
+Now proceed to step2.
+
+```{r, include = TRUE, message = FALSE}
+fits <- with(imps, lm(bmi ~ age + hyp + chl))
+summary(fits$analyses[[1]])
+```
+
+Then pool the analyses to the final estimates.
+
+```{r}
+ests <- pool(fits)
+ests
+```
+
+The column \texttt{lambda} is the proportion of variance in the parameter due to the missing values, and the parameter is more affected by the nonresponse when this value is larger. According to the \texttt{lambda} column of \texttt{ests}, \texttt{age} appear to be most affected by the nonresponse. 
+
+Then we repeated the analysis for other seed to check whether the conclusion remain the same. 
+```{r, include = TRUE, message = FALSE}
+#using the default M=5 but changing the seed
+ests_seed2 <- pool(with(mice(nhanes, seed = 2, printFlag = FALSE), lm(bmi ~ age + hyp + chl)))
+ests_seed3 <- pool(with(mice(nhanes, seed = 3, printFlag = FALSE), lm(bmi ~ age + hyp + chl)))
+ests_seed4 <- pool(with(mice(nhanes, seed = 4, printFlag = FALSE), lm(bmi ~ age + hyp + chl)))
+ests_seed5 <- pool(with(mice(nhanes, seed = 5, printFlag = FALSE), lm(bmi ~ age + hyp + chl)))
+ests_seed2
+ests_seed3
+ests_seed4
+ests_seed5
+```
+
+The conclusion does not remain the same. We can see that the constant is most affected by the nonresponse for seed 2, \texttt{age} for seed 3, \texttt{chl} for seed 4, and constant for seed 5.
+
+Then we repeat the analysis $M=100$ instead of $M=5$ using seed 1. 
+
+```{r, include = TRUE, message = FALSE}
+#using the M=100 and changing the seed
+ests_seed1_100 <- pool(with(mice(nhanes, seed = 1, printFlag = FALSE, m = 100), 
+                            lm(bmi ~ age + hyp + chl)))
+ests_seed2_100 <- pool(with(mice(nhanes, seed = 2, printFlag = FALSE, m = 100), 
+                            lm(bmi ~ age + hyp + chl)))
+ests_seed3_100 <- pool(with(mice(nhanes, seed = 3, printFlag = FALSE, m = 100), 
+                            lm(bmi ~ age + hyp + chl)))
+ests_seed4_100 <- pool(with(mice(nhanes, seed = 4, printFlag = FALSE, m = 100), 
+                            lm(bmi ~ age + hyp + chl)))
+ests_seed5_100 <- pool(with(mice(nhanes, seed = 5, printFlag = FALSE, m = 100), 
+                            lm(bmi ~ age + hyp + chl)))
+
+#summary the ests for M = 5 and M = 100
+summary(ests, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed2, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed3, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed4, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed5, conf.int = TRUE)[,c(2,3,6,7,8)]
+
+summary(ests_seed1_100, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed2_100, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed3_100, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed4_100, conf.int = TRUE)[,c(2,3,6,7,8)]
+summary(ests_seed5_100, conf.int = TRUE)[,c(2,3,6,7,8)]
+```
+
+So $M=100$ is preferred and the pooled estimates, standard errors, and the bounds of the intervals get more stable for $M=100$ and we can be more confident in any one specific run. With a sufficiently large M, the results will with high probability only differ by a small amount. 
+
+2.
+
+
+```{r,  include = TRUE, message = FALSE}
+load('dataex2.Rdata')
+```
+
+
+The method \texttt{norm.nob} implements stochastic regression imputation without concerning uncertainty. 
+The method \texttt{norm} implements stochastic regression imputation with the uncertaity is taken into account, and the method \texttt{norm.boot} implements a frequentist counterpart of \texttt{norm}, where the parameters are estimated based on a bootstrap sample of the complete cases. 
+
+
+```{r, include = TRUE, message = FALSE}
+#by using stochastic imputation 
+require(mice)
+t_sto = 0
+for (i in 1:100){
+  imps_sto <- mice(dataex2[, , i], method = 'norm.nob', m = 20, seed = 1, printFlag = FALSE)
+  ests_sto <- pool(with(imps_sto, lm(Y ~ X)))
+  ci <- summary(ests_sto, conf.int = TRUE)[,c(7,8)]
+  if ((ci[2,1]>= 3) | (ci[2,2]<=3)){
+    t_sto <- t_sto + 1}
+}
+1-t_sto/100
+
+```
+```{r, include = TRUE, message = FALSE}
+#by using bootstrap
+t_boo = 0
+for (i in 1:100){
+  imps_boo <- mice(dataex2[, , i], method = 'norm.boot', m = 20, seed = 1, printFlag = FALSE)
+  ests_boo <- pool(with(imps_boo, lm(Y ~ X)))
+  ci <- summary(ests_boo, conf.int = TRUE)[,c(7,8)]
+  if ((ci[2,1]>= 3) | (ci[2,2]<=3)){
+    t_boo <- t_boo + 1}
+}
+1-t_boo/100
+```
+
+When using stochastic regression imputation, the proportion of the time that the 95% confidence interval for $\beta_1$ contains the true value is 88%, while using the bootstrap the proportion is 95%. So the empirical coverage probability of the 95% confidence interval for $\beta_1$ is 88% when not acknowledging parameter uncertainty when performing step 1, and 95% when acknowledging. 
+
+
+
+4.
+
+
+```{r, include = TRUE, message = FALSE}
+load('dataex4.Rdata')
+```
+
+We start with the dry/setup run of \texttt{mice()}.
+
+```{r, include = TRUE, message = FALSE}
+require(mice)
+imp0 <- mice(dataex4, maxit = 0)
+imp0
+```
+
+*Impute, then transform:* only imputing $x_1$ and $y$ in step1.
+
+```{r, include = TRUE, message = FALSE}
+data1 <- dataex4
+imp1 <- mice(data1, printFlag = FALSE, m = 50, seed = 1)
+
+fits1 <- with(imp1, lm(y ~ x1 + x2 + x1*x2))
+ests1 <- pool(fits1)
+summary(ests1, conf.int = TRUE)[,c(2, 3, 6, 7, 8)]
+```
+
+*passive imputation:*
+
+
+```{r, include = TRUE, message = FALSE}
+data2 <- data.frame(dataex4, x1x2 = dataex4$x1*dataex4$x2)
+imp0_2 <- mice(data2, maxit = 0)
+```
+
+Calculate $x_1x_2$ through the \texttt{I()} operator, modify the predictor matrix and make sure $x_1x_2$ is imputed after $x_1$ and $x_2$.
+
+```{r, include = TRUE, message = FALSE}
+meth <- imp0_2$method
+meth["x1x2"] <- "~I(x1*x2)"
+
+pred <- imp0_2$predictorMatrix
+pred[c("x1", "x2"),"x1x2"] <- 0
+
+visSeq <- imp0_2$visitSequence
+visSeq
+
+imp2 <- mice(data2, method = meth, predictorMatrix = pred, visitSequence = visSeq, m = 50, seed = 1, printFlag = FALSE)
+
+fits2 <- with(imp2, lm(y ~ x1 + x2 + x1*x2))
+ests2 <- pool(fits2)
+summary(ests2, conf.int = TRUE)[,c(2, 3, 6, 7, 8)]
+
+```
+
+
+
+
+
+*just another variable:*
+
+```{r, include = TRUE, message = FALSE}
+data3 <- dataex4
+data3$x1x2 <- data3$x1*data3$x2
+
+imp3 <- mice(data3, m = 50, seed = 1, printFlag = FALSE)
+
+fits3 <- with(imp3, lm(y ~ x1 + x2 + x1*x2))
+ests3 <- pool(fits3)
+summary(ests3, conf.int = TRUE)[,c(2, 3, 6, 7, 8)]
+
+```
+
+The conceptual drawback of *just another variable*: As the last column of the data, it is only imputed from the $x_1$ and $x_2$ of the original data, while the *passive imputation* use the $x_1$ and $x_2$ that is updated during the iterations. 
+
+5.
+---
+title: '5'
+author: "Zijun Lin"
+date: "2020/12/22"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+We start taking a first look at the data, we see that there are 500 rows and 18 variables. 
+```{r, include = TRUE, message = FALSE}
+load('NHANES2.Rdata')
+dim(NHANES2)
+```
+
+Then we further inspect the nature of our variables and check they are correctly coded.
+
+```{r, include = TRUE, message = FALSE}
+str(NHANES2)
+```
+
+Then using the command summary we can have a quick idea about min/max/mean/quantiles of the observed data in each variable along with the number of missing values.
+
+```{r, include = TRUE, message = FALSE}
+summary(NHANES2)
+```
+
+Then inspect the missing data patterns. 
+
+```{r, include = TRUE, message = FALSE}
+require(mice)
+mdpat_mice <- md.pattern(NHANES2)
+```
+
+
+
+```{r, include = TRUE, message = FALSE}
+require(JointAI)
+md_pattern(NHANES2, pattern = FALSE)
+```
+
+From the plot, we can conclude that there are 411 observations with observed values on all 12 variables. 
+
+Then we visualise how the observed parts of the different variables are distributed.
+
+```{r, include = TRUE, message = FALSE}
+par(mar = c(3,3,2,1), mpg = c(2,0.6,0))
+plot_all(NHANES2, breaks = 30, ncol = 4)
+```
+
+We can see that the distributions of the \texttt{wgt}, \texttt{WC} are all quite skewed, and so predictive mean matching is definitely the best option here. 
+
+
+We will now proceed to the imputation step. We will start with the dry/setup run of \texttt{mice()}.
+
+```{r, include = TRUE, message = FALSE}
+imp0 <- mice(NHANES, maxit = 0)
+imp0$method
+imp0$predictorMatrix
+```
+We do not need to change the \texttt{predictorMatrix} here. 
+
+For the final imputation I will use \texttt{maxit=20} and \texttt{M=20}.
+
+```{r, include = TRUE, message = FALSE}
+imp <- mice(NHANES2, maxit = 20, m = 20, seed = 1, printFlag = FALSE)
+```
+
+Let us check if \texttt{mice()} found any problem during the imputation.
+
+```{r, include = TRUE, message = FALSE}
+imp$loggedEvents
+```
+
+Now look at the chains of the imputed values to check whether there are convergence problems. 
+
+```{r, include = TRUE, message = FALSE}
+plot(imp, layout = c(3,3))
+```
+
+All seems good in what regards convergence of the chains of the different variables. In practice, more iterations should be done. We can now inspect if the distribution of the imputed values agrees with the distribution of the observed ones. 
+
+```{r, include = TRUE, message = FALSE}
+densityplot(imp)
+```
+
+```{r, include = TRUE, message = FALSE}
+densityplot(imp)
+
+require(devtools)
+require(reshape2)
+require(RColorBrewer)
+require(ggplot2)
+source_url("https://gist.githubusercontent.com/NErler/0d00375da460dd33839b98faeee2fdab/raw/c6f537ecf80eddcefd94992ec7926aa57d454536/propplot.R")
+
+propplot(imp)
+```
+
+Everything looks reasonable. Having confirmed that our imputation step was successful, we can proceed to the analysis of the imputed data and fit our substantive model of interest.
+
+```{r, include = TRUE, message = FALSE}
+fits <- with(imp, lm(wgt ~ gender + age + hgt + WC))
+```
+
+Finally pool the results.
+
+```{r}
+pool_ests <- pool(fits)
+pool_ests
+summary <- summary(pool_ests, conf.int = TRUE)
+```
+
+
+```{r, include = TRUE, message = FALSE}
+df <- data.frame('Estimate' = summary[,2],
+                 'lq' = summary[,7],
+                 'uq' = summary[,8])
+
+rownames(df) <- c("$\\beta_0$", "$\\beta_1$","$\\beta_2$", "$\\beta_3$","$\\beta_4$")
+colnames(df) <- c("Estimate", "2.5% quantile", "97.5% quantile")
+knitr::kable(df, escape = FALSE, digits = 3,
+             caption = "Regression coefficient estimates and corresponding 95% CI")
+```
+
+
